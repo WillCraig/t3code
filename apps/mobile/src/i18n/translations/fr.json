@@ -784,6 +784,7 @@
   "7a5c2dc712b4b896": "Impossible de confirmer que le serveur a redémarré sur t3@{version}. Reconnectez-vous pour vérifier le résultat de la mise à jour.",
   "dc81fbf58295c211": "La mise à jour t3@{version} s’est arrêtée avant que le serveur n’accepte le redémarrage.",
   "9c46ed057279682d": "L’app de bureau a repris sans installer la mise à jour préparée.",
+  "a6a9b2b760b1b6a1": "La mise à jour t3@{version} a été annulée parce que le service en arrière-plan l’a arrêtée avant qu’elle soit prête (prepared-timeout). Sur la machine du serveur, exécutez `t3 update` pour remplacer un service antérieur à 0.0.46-nightly.20261014.3105, qui n’attend que 2 minutes. Réessayer depuis le client l’annule de nouveau tant que cette commande n’a pas remplacé le service.",
   "43bddded3b3e2fff": "La mise à jour t3@{version} a été validée.",
   "b50da99bbfd59a6d": "La mise à jour t3@{version} a été annulée.",
   "31dc4da5813e0846": "La mise à jour t3@{version} a échoué.",

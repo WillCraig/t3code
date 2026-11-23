@@ -167,15 +167,26 @@ export class ServerUpdateTerminalError extends Schema.TaggedError<ServerUpdateTe
   },
 ) {
   override get message(): string {
+    if (this.reason === "prepared-timeout") return markedTextEnglish(this.preparedTimeoutText);
     return this.reason ?? markedTextEnglish(this.statusText);
   }
 
   get i18nMessage(): MarkedText | undefined {
+    if (this.reason === "prepared-timeout") return this.preparedTimeoutText;
     return this.reason === undefined
       ? this.statusText
       : this.reason === DESKTOP_RESUMED_WITHOUT_UPDATE
         ? [DESKTOP_RESUMED_WITHOUT_UPDATE]
         : undefined;
+  }
+
+  private get preparedTimeoutText(): MarkedText {
+    return [
+      msg(
+        "The t3@{version} update rolled back because the service launcher stopped it before it was ready (prepared-timeout). On the server machine, run `t3 update` to replace a launcher from before 0.0.46-nightly.20261014.3105, which only waits 2 minutes. Retrying from the client rolls back again until that launcher is replaced.",
+        { version: this.targetVersion },
+      ),
+    ];
   }
 
   private get statusText(): MarkedText {

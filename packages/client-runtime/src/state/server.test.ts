@@ -66,6 +66,7 @@ import {
   resolveServerUpdateProgressResult,
   serverUpdateStateForProgressEvent,
   serverUpdateStateAtom,
+  serverUpdateFailure,
   serverUpdateFailureText,
   serverUpdateStateForServerVersion,
   validateServerUpdateReadyEvent,
@@ -909,7 +910,23 @@ describe("server state projection", () => {
       const rollback = yield* Effect.flip(
         validateServerUpdateReadyEvent(result, ready("rolled-back")),
       );
-      expect(rollback.message).toBe("prepared-timeout");
+      expect(rollback.message).toContain("prepared-timeout");
+      expect(rollback.message).toContain("`t3 update`");
+      expect(rollback.message).toContain("0.0.46-nightly.20261014.3105");
+      expect(serverUpdateFailure(rollback).message).toBe(rollback.message);
+      const exited = yield* Effect.flip(
+        validateServerUpdateReadyEvent(result, {
+          ...ready("rolled-back"),
+          payload: {
+            ...ready("rolled-back").payload,
+            updateOutcome: {
+              ...ready("rolled-back").payload.updateOutcome!,
+              reason: "candidate-exited:1",
+            },
+          },
+        }),
+      );
+      expect(exited.message).toBe("candidate-exited:1");
       const foreign = ready("rolled-back");
       const foreignRollback = yield* Effect.flip(
         validateServerUpdateReadyEvent(result, {

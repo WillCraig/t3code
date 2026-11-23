@@ -784,6 +784,7 @@
   "7a5c2dc712b4b896": "Kunde inte bekräfta att servern startade igen på t3@{version}. Anslut igen för att kontrollera resultatet av uppdateringen.",
   "dc81fbf58295c211": "Uppdateringen till t3@{version} avslutades innan servern godkände omstarten.",
   "9c46ed057279682d": "Skrivbordsappen startade igen utan att installera den förberedda uppdateringen.",
+  "a6a9b2b760b1b6a1": "Uppdateringen till t3@{version} återställdes eftersom bakgrundstjänsten stoppade den innan den var redo (prepared-timeout). Kör `t3 update` på servern för att byta ut en tjänst från före 0.0.46-nightly.20261014.3105, som bara väntar 2 minuter. Ett nytt försök från klienten återställs igen tills kommandot har bytt ut tjänsten.",
   "43bddded3b3e2fff": "Uppdateringen till t3@{version} genomfördes.",
   "b50da99bbfd59a6d": "Uppdateringen till t3@{version} återställdes.",
   "31dc4da5813e0846": "Uppdateringen till t3@{version} misslyckades.",

@@ -784,6 +784,7 @@
   "7a5c2dc712b4b896": "Es konnte nicht bestätigt werden, dass der Server mit t3@{version} weiterläuft. Verbinde dich erneut, um das Ergebnis des Updates zu prüfen.",
   "dc81fbf58295c211": "Das Update auf t3@{version} wurde beendet, bevor der Server den Neustart angenommen hat.",
   "9c46ed057279682d": "Die Desktop-App wurde fortgesetzt, ohne das vorbereitete Update zu installieren.",
+  "a6a9b2b760b1b6a1": "Das Update auf t3@{version} wurde zurückgerollt, weil der Hintergrunddienst es gestoppt hat, bevor es bereit war (prepared-timeout). Führe auf dem Server `t3 update` aus, um einen Hintergrunddienst von vor 0.0.46-nightly.20261014.3105 zu ersetzen, der nur 2 Minuten wartet. Ein erneuter Versuch vom Client rollt wieder zurück, bis dieser Befehl den Hintergrunddienst ersetzt.",
   "43bddded3b3e2fff": "Das Update auf t3@{version} wurde übernommen.",
   "b50da99bbfd59a6d": "Das Update auf t3@{version} wurde zurückgerollt.",
   "31dc4da5813e0846": "Das Update auf t3@{version} ist fehlgeschlagen.",

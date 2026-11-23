@@ -784,6 +784,7 @@
   "7a5c2dc712b4b896": "Não foi possível confirmar que o servidor voltou em t3@{version}. Reconecte para verificar o resultado da atualização.",
   "dc81fbf58295c211": "A atualização t3@{version} terminou antes de o servidor aceitar a reinicialização.",
   "9c46ed057279682d": "O app para desktop voltou sem instalar a atualização preparada.",
+  "a6a9b2b760b1b6a1": "A atualização t3@{version} foi revertida porque o serviço em segundo plano a interrompeu antes de ficar pronta (prepared-timeout). No servidor, execute `t3 update` para substituir um serviço anterior a 0.0.46-nightly.20261014.3105, que espera apenas 2 minutos. Tentar novamente no cliente reverte de novo até esse comando substituir o serviço.",
   "43bddded3b3e2fff": "A atualização t3@{version} foi aplicada.",
   "b50da99bbfd59a6d": "A atualização t3@{version} foi revertida.",
   "31dc4da5813e0846": "A atualização t3@{version} falhou.",

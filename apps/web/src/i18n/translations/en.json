@@ -784,6 +784,7 @@
   "7a5c2dc712b4b896": "Could not confirm that the server resumed on t3@{version}. Reconnect to check the update outcome.",
   "dc81fbf58295c211": "The t3@{version} update ended before the server accepted the restart.",
   "9c46ed057279682d": "The desktop app resumed without installing the prepared update.",
+  "a6a9b2b760b1b6a1": "The t3@{version} update rolled back because the service launcher stopped it before it was ready (prepared-timeout). On the server machine, run `t3 update` to replace a launcher from before 0.0.46-nightly.20261014.3105, which only waits 2 minutes. Retrying from the client rolls back again until that launcher is replaced.",
   "43bddded3b3e2fff": "The t3@{version} update committed.",
   "b50da99bbfd59a6d": "The t3@{version} update rolled-back.",
   "31dc4da5813e0846": "The t3@{version} update failed.",

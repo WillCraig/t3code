@@ -12,8 +12,17 @@ import {
 } from "../persistence/databaseMigrationHead.ts";
 import { migrationManifest } from "../persistence/Migrations.ts";
 
-import { runServicePreflight } from "./servicePreflight.ts";
-import { SERVICE_LAUNCHER_PROTOCOL } from "./serviceProtocol.ts";
+import {
+  installedLauncherVersion,
+  launcherVersionFromUnit,
+  PREPARED_DEADLINE_LAUNCHER_VERSION,
+  runServicePreflight,
+  serviceUnitPathFromEnvironment,
+} from "./servicePreflight.ts";
+import { SERVICE_LAUNCHER_PROTOCOL, SERVICE_UNIT_ENV } from "./serviceProtocol.ts";
+
+const OLD_LAUNCHER = "0.0.46-nightly.20261003.2610";
+const encoder = new TextEncoder();
 
 // regression: #13239 a stale CLI shadowing the updated one kept "updating" to itself
 it.each([1])("blocks legacy launcher protocol %i with exact recovery steps", (launcherProtocol) => {
@@ -47,6 +56,99 @@ it.each([3, SERVICE_LAUNCHER_PROTOCOL])(
     ).toEqual({ status: "ready", version: "9.8.7", launcherProtocol });
   },
 );
+
+// regression: #38526 a protocol-3 launcher from before the 30-minute deadline still reports protocol 3
+it.each([OLD_LAUNCHER, "0.0.46-nightly.20261014.3104", "0.0.45"])(
+  "refuses remote update under launcher %s and tells the operator to run t3 update",
+  (launcherVersion) => {
+    const result = runServicePreflight({
+      databasePath: "/missing/state.sqlite",
+      launcherProtocol: 3,
+      launcherVersion,
+      version: "9.8.7",
+    });
+    expect(result.status).toBe("blocked");
+    const reason = result.status === "blocked" ? result.reason : "";
+    expect(reason).toContain(`t3@${launcherVersion}`);
+    expect(reason).toContain(PREPARED_DEADLINE_LAUNCHER_VERSION);
+    expect(reason).toContain("run `t3 update`");
+    expect(reason).toContain("2 minutes");
+    expect(reason).not.toContain("curl");
+  },
+);
+
+it.each([PREPARED_DEADLINE_LAUNCHER_VERSION, "0.0.46-nightly.20261015.3200", "0.1.10"])(
+  "allows launcher %s that has the 30-minute prepared deadline",
+  (launcherVersion) => {
+    expect(
+      runServicePreflight({
+        databasePath: "/missing/state.sqlite",
+        launcherProtocol: 3,
+        launcherVersion,
+        version: "9.8.7",
+      }),
+    ).toEqual({ status: "ready", version: "9.8.7", launcherProtocol: 3 });
+  },
+);
+
+it("still names the protocol install when the launcher protocol itself is unsupported", () => {
+  const result = runServicePreflight({
+    databasePath: "/missing/state.sqlite",
+    launcherProtocol: 1,
+    launcherVersion: OLD_LAUNCHER,
+    version: "9.8.7",
+  });
+  expect(result.status === "blocked" ? result.reason : "").toContain(
+    "curl -fsSL https://t3.codes/install.sh",
+  );
+});
+
+it("reads the launcher version from the unit a service child inherits", () => {
+  const version = OLD_LAUNCHER;
+  const program = `/home/a/.t3/runtime/versions/${version}/t3`;
+  const unit = `ExecStart="${program}" __service-launcher\n`;
+  const plist = `<key>ProgramArguments</key><array><string>${program}</string></array>`;
+  const task = `<Arguments>--headless "C:\\Users\\a\\.t3\\runtime\\versions\\${version}\\t3.exe" "__service-launcher"`;
+  expect(launcherVersionFromUnit(encoder.encode(unit))).toBe(version);
+  expect(launcherVersionFromUnit(encoder.encode(plist))).toBe(version);
+  expect(launcherVersionFromUnit(encoder.encode(task))).toBe(version);
+  expect(launcherVersionFromUnit(encoder.encode("ExecStart=/usr/local/bin/t3\n"))).toBeUndefined();
+
+  const unitPath = "/home/a/.config/systemd/user/t3code.service";
+  expect(
+    serviceUnitPathFromEnvironment({
+      [SERVICE_UNIT_ENV]: "t3code.service",
+      HOME: "/home/a",
+    }),
+  ).toBe(unitPath);
+  expect(
+    serviceUnitPathFromEnvironment({
+      [SERVICE_UNIT_ENV]: "com.t3tools.t3code.service.plist",
+      HOME: "/Users/a",
+    }),
+  ).toBe("/Users/a/Library/LaunchAgents/com.t3tools.t3code.service.plist");
+  expect(
+    serviceUnitPathFromEnvironment({
+      [SERVICE_UNIT_ENV]: "t3code-task.xml",
+      LOCALAPPDATA: "C:\\Users\\a\\AppData\\Local",
+    }),
+  ).toBe("C:\\Users\\a\\AppData\\Local\\t3code\\t3code-task.xml");
+  expect(serviceUnitPathFromEnvironment({})).toBeUndefined();
+
+  const reads = new Map<string, Uint8Array>([[unitPath, encoder.encode(unit)]]);
+  expect(
+    installedLauncherVersion({ [SERVICE_UNIT_ENV]: "t3code.service", HOME: "/home/a" }, (path) =>
+      reads.get(path),
+    ),
+  ).toBe(version);
+  expect(
+    installedLauncherVersion(
+      { [SERVICE_UNIT_ENV]: "t3code.service", HOME: "/home/a" },
+      () => undefined,
+    ),
+  ).toBeUndefined();
+  expect(installedLauncherVersion({}, () => encoder.encode(unit))).toBeUndefined();
+});
 
 it.layer(NodeServices.layer)("service preflight database", (it) => {
   it.effect("blocks a database that a newer build migrated", () =>

@@ -9,7 +9,10 @@ processes do not self-update.
 
 Remote updates replace only the server child, not the launcher, so every existing background service
 lags behind after a launcher-protocol bump. Keep new server runtimes compatible with the previous
-launcher protocol unless impossible, and validate protocol compatibility during preflight.
+launcher protocol unless impossible, and validate protocol compatibility during preflight. A
+protocol-3 launcher older than `0.0.46-nightly.20261014.3105` still reports that protocol, but it
+ends the trial after two minutes. Preflight reads the launcher version from the service unit and
+refuses that remote update.
 
 Installations use exact versions and stage/preflight before publishing an immutable runtime so
 restarts never depend on npm cache eviction or a moving tag.

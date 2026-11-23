@@ -137,6 +137,11 @@ update can roll back to the previous version. If the update still fails:
 2. Check that you updated the server's machine, not only the device you are using.
 3. For a command-line server, stop it and relaunch the exact version shown in the notice.
 
+If the message says the service launcher stops an update after 2 minutes, or that the
+update rolled back with prepared-timeout, run `t3 update` on that machine. A launcher
+from before `0.0.46-nightly.20261014.3105` only waits 2 minutes. Retrying from here does
+not finish the update until that command replaces the launcher.
+
 Only one server can use a T3 home directory at a time. If startup reports that
 another server owns it, stop that server before retrying, or use a separate home
 directory and pair with the running server.

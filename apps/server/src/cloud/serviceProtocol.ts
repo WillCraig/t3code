@@ -5,7 +5,8 @@ import type { ServerSelfUpdateOutcome } from "@t3tools/contracts";
 // service install restarts the service.
 export const SERVICE_LAUNCHER_PROTOCOL = 4 as const;
 /** Launchers this runtime runs under. Protocol 3 has the same IPC and durable format, and
-    refusing it stops every remote update until someone opens a shell on the host. */
+    refusing it stops every remote update until someone opens a shell on the host. A protocol-3
+    launcher older than the 30-minute prepared deadline is refused in preflight by its version. */
 export type SupportedLauncherProtocol = 3 | typeof SERVICE_LAUNCHER_PROTOCOL;
 export const isSupportedLauncherProtocol = (
   protocol: unknown,
@@ -169,6 +170,14 @@ const EXACT_SERVICE_VERSION = new RegExp(
 
 export const isExactServiceVersion = (version: string): boolean =>
   EXACT_SERVICE_VERSION.test(version);
+
+/** Version directory of a unit's `runtime/versions/<version>/t3` program, when it names one. */
+const SERVICE_RUNTIME_VERSION = /(?:^|[\\/])runtime[\\/]versions[\\/]([^\\/]+)[\\/]t3(?:\.exe)?$/i;
+
+export function serviceRuntimeVersionOf(program: string): string | undefined {
+  const version = SERVICE_RUNTIME_VERSION.exec(program)?.[1];
+  return version !== undefined && isExactServiceVersion(version) ? version : undefined;
+}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
