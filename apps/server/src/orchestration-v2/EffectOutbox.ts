@@ -137,6 +137,8 @@ export const OrchestrationEffectRequestV2 = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("delegated-tasks.stop"),
     reason: Schema.optional(Schema.String),
+    /** Set when Stop ends only the tasks of this run. Absent stops every task under the thread. */
+    runId: Schema.optional(RunId),
   }),
 ]);
 export type OrchestrationEffectRequestV2 = typeof OrchestrationEffectRequestV2.Type;

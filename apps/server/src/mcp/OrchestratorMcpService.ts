@@ -3866,6 +3866,7 @@ const make = Effect.gen(function* () {
             commandId,
             threadId: input.threadId,
             reason,
+            keepEarlierDelegatedTasks: false,
           })
           .pipe(Effect.catch(stopFailed));
         // A retry with the same clientRequestId repeats only the stops that failed.

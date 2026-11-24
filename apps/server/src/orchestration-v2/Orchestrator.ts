@@ -776,6 +776,7 @@ function delegatedTasksStopEffect(command: {
   readonly commandId: CommandId;
   readonly threadId: ThreadId;
   readonly reason?: string | undefined;
+  readonly runId?: RunId | undefined;
 }): PendingOrchestrationEffectV2 {
   return {
     id: `effect:${command.commandId}:delegated-tasks.stop`,
@@ -784,6 +785,7 @@ function delegatedTasksStopEffect(command: {
     request: {
       type: "delegated-tasks.stop",
       ...(command.reason === undefined ? {} : { reason: command.reason }),
+      ...(command.runId === undefined ? {} : { runId: command.runId }),
     },
   };
 }
@@ -891,6 +893,22 @@ function mayStartSubagentFollowup(
 /** Waiting runs only drain post-terminal output; their agent turn is over and still needs a wake. */
 function isLiveRun(run: OrchestrationV2Run): boolean {
   return run.status === "preparing" || run.status === "starting" || run.status === "running";
+}
+
+/**
+ * A user's Stop of a live prompt keeps earlier delegated tasks. A deliberate stop never does:
+ * the subtree walk (`stopDelegatedTasks: false`), a subagent card, or MCP `interruptThread`
+ * with `stop: true`. A waiting run is not live, so Stop ends delegated tasks.
+ */
+function keepsEarlierDelegatedTasks(input: {
+  readonly live: boolean;
+  readonly stopDelegatedTasks?: boolean | undefined;
+  readonly keepEarlierDelegatedTasks?: boolean | undefined;
+}): boolean {
+  if (input.stopDelegatedTasks === false || input.keepEarlierDelegatedTasks === false) {
+    return false;
+  }
+  return input.live;
 }
 
 function hasLiveRun(projection: Pick<OrchestrationV2ThreadProjection, "runs">): boolean {
@@ -13581,8 +13599,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     readonly projection: Pick<OrchestrationV2ThreadProjection, "thread" | "runs" | "subagents">;
     readonly cohortRunIds: ReadonlyArray<RunId>;
     readonly now: DateTime.Utc;
-    // A live turn's Stop disposes only the cohort it names. Earlier delegated
-    // tasks keep their delivery, so they can still wake the parent.
     readonly preserveUnrelatedDelegatedTasks?: boolean;
   }) {
     const emitEvent = emit(input.events, input.command);
@@ -14110,6 +14126,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       (candidate) => candidate.id === run.userMessageId,
     );
     const completionCohortRunId = completionMessage?.delegatedCompletion?.parentRunId ?? run.id;
+    const keepEarlier = keepsEarlierDelegatedTasks({
+      live: isLiveRun(run),
+      stopDelegatedTasks: command.stopDelegatedTasks,
+      keepEarlierDelegatedTasks: command.keepEarlierDelegatedTasks,
+    });
     const stopRemainingWork = () =>
       command.holdQueue === true
         ? holdStoppedThread({
@@ -14118,7 +14139,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             projection,
             cohortRunIds: [completionCohortRunId],
             now,
-            ...(isLiveRun(run) ? { preserveUnrelatedDelegatedTasks: true } : {}),
+            ...(keepEarlier ? { preserveUnrelatedDelegatedTasks: true } : {}),
           })
         : Effect.gen(function* () {
             for (const parentRunId of new Set([completionCohortRunId, run.id])) {
@@ -14135,6 +14156,24 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               });
             }
           });
+    // Queued after the provider interrupt, since a thread's effects run in order.
+    const enqueueDelegatedTasksStop = Effect.gen(function* () {
+      if (command.holdQueue !== true || command.stopDelegatedTasks === false) return;
+      const included = (task: OrchestrationV2Subagent) =>
+        task.origin === "app_owned" &&
+        (task.childThreadId !== null || task.remoteChild !== undefined) &&
+        (!keepEarlier || task.runId === completionCohortRunId);
+      if (!projection.subagents.some(included)) return;
+      yield* Ref.update(effects, (existing) => [
+        ...existing,
+        delegatedTasksStopEffect({
+          commandId: command.commandId,
+          threadId: command.threadId,
+          ...(command.reason === undefined ? {} : { reason: command.reason }),
+          ...(keepEarlier ? { runId: completionCohortRunId } : {}),
+        }),
+      ]);
+    });
 
     const emitEvent = emit(events, command);
     const interruptRequestItem: OrchestrationV2TurnItem = {
@@ -14356,6 +14395,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       }
       yield* stopRemainingWork();
       yield* Ref.update(effects, (existing) => [...existing, ...otherProviderInterrupts]);
+      yield* enqueueDelegatedTasksStop;
       return {
         effectTypes: ["provider-turn.start", "provider-turn.restart"],
         reason: `Run ${run.id} was interrupted before its provider turn started.`,
@@ -14406,6 +14446,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         now,
       });
       yield* Ref.update(effects, (existing) => [...existing, ...otherProviderInterrupts]);
+      yield* enqueueDelegatedTasksStop;
       return undefined;
     }
     if (providerThread.providerSessionId === null) {
@@ -14450,6 +14491,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       } satisfies PendingOrchestrationEffectV2,
       ...otherProviderInterrupts,
     ]);
+    yield* enqueueDelegatedTasksStop;
     return undefined;
   });
 
@@ -14674,12 +14716,15 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ),
       );
     if (projection.thread.deletedAt !== null) return undefined;
-    // A live turn's Stop interrupts only that turn. Idle Stop still ends delegated tasks.
-    const interruptingLiveTurn = projection.runs.some(isLiveRun);
-    // Queued after the interrupt, since a thread's effects run in order.
-    const stopDelegatedTasks =
+    const keepEarlier = keepsEarlierDelegatedTasks({
+      live: projection.runs.some(isLiveRun),
+      stopDelegatedTasks: command.stopDelegatedTasks,
+      keepEarlierDelegatedTasks: command.keepEarlierDelegatedTasks,
+    });
+    // Used when the turn could not be interrupted. A successful interrupt queues its own walk.
+    const enqueueFullDelegatedStop =
+      keepEarlier ||
       command.stopDelegatedTasks === false ||
-      interruptingLiveTurn ||
       !projection.subagents.some(
         (task) =>
           task.origin === "app_owned" &&
@@ -14714,6 +14759,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             runId: target.id,
             holdQueue: true,
             ...(command.reason === undefined ? {} : { reason: command.reason }),
+            ...(command.stopDelegatedTasks === false ? { stopDelegatedTasks: false } : {}),
+            ...(command.keepEarlierDelegatedTasks === false
+              ? { keepEarlierDelegatedTasks: false }
+              : {}),
           },
           interruptEvents,
           interruptEffects,
@@ -14726,7 +14775,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         yield* Ref.update(events, (existing) => [...existing, ...written]);
         yield* Ref.update(effects, (existing) => [...existing, ...enqueued]);
         yield* cancelIdleOrphans({ command, events, projection });
-        yield* stopDelegatedTasks;
         return interrupted.value;
       }
       yield* Effect.logWarning("thread.stop could not interrupt the running turn", {
@@ -14781,10 +14829,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       projection,
       cohortRunIds: [],
       now,
-      ...(interruptingLiveTurn ? { preserveUnrelatedDelegatedTasks: true } : {}),
+      ...(keepEarlier ? { preserveUnrelatedDelegatedTasks: true } : {}),
     });
     yield* cancelIdleOrphans({ command, events, projection });
-    yield* stopDelegatedTasks;
+    yield* enqueueFullDelegatedStop;
     return undefined;
   });
 
@@ -16292,11 +16340,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         yield* dispatchSubagentStop(command, events, effects);
         break;
       case "run.interrupt": {
-        const interruptingLiveTurn = (yield* projectionStore
-          .getThreadRecords(command.threadId, ["runs"])
-          .pipe(mapDispatchError(command))).runs.some(
-          (run) => run.id === command.runId && isLiveRun(run),
-        );
         cancelUnsettledEffects = yield* dispatchRunInterrupt(command, events, effects);
         if (command.holdQueue === true) {
           // Stop must still commit when a child can't be read, so a failed repair's
@@ -16318,13 +16361,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               threadId: command.threadId,
               cause: repaired.cause,
             });
-          // A live turn's Stop interrupts only that turn. Idle Stop still ends delegated tasks.
-          if (!interruptingLiveTurn) {
-            yield* Ref.update(effects, (existing) => [
-              ...existing,
-              delegatedTasksStopEffect(command),
-            ]);
-          }
         }
         break;
       }

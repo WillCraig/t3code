@@ -14,7 +14,9 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   ProviderThreadId,
+  ProviderTurnId,
   type Project,
+  RunAttemptId,
   type RepositoryIdentity,
   RunId,
   type ServerProvider,
@@ -2125,6 +2127,115 @@ it.effect("the parent's Stop queues stopping a task that runs only there", () =>
         WHERE thread_id = ${parentThreadId}
       `;
       expect(outbox.some((row) => row.effect_type === "delegated-tasks.stop")).toBe(true);
+    }),
+  ).pipe(Effect.provide(NodeHttpServer.layerTest)),
+);
+
+it.effect("interrupting a live parent turn does not settle its remote-only subagent", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const thread = yield* makeBoxThread;
+      const b = yield* serveBox(thread);
+      const offers = yield* SubscriptionRef.make<
+        ReadonlyArray<ProviderContinuationRequests.ProviderContinuationRequest>
+      >([]);
+      const database = yield* SqlitePersistence.layerMemory.pipe(Layer.build);
+      const a = yield* makeLaptop(database, offers);
+      yield* linkTo(a.links, b, "full-access");
+      yield* seedParent(a);
+      const delegated = yield* delegateToBox(a);
+
+      const now = yield* DateTime.now;
+      const parent = yield* a.orchestrator.getThreadProjection(parentThreadId);
+      const parentRun = parent.runs[0]!;
+      const attemptId = RunAttemptId.make("attempt:laptop-live");
+      const providerTurnId = ProviderTurnId.make("provider-turn:laptop-live");
+      yield* a.sink.write({
+        commandId: CommandId.make("command:live-turn:laptop-parent"),
+        events: [
+          {
+            id: EventId.make("event:attempt:laptop-live"),
+            type: "run-attempt.updated",
+            threadId: parentThreadId,
+            runId: parentRun.id,
+            nodeId: parentRootNode,
+            driver,
+            providerInstanceId: instanceId,
+            occurredAt: now,
+            payload: {
+              id: attemptId,
+              runId: parentRun.id,
+              attemptOrdinal: 1,
+              rootNodeId: parentRootNode,
+              providerInstanceId: instanceId,
+              providerThreadId: parentRun.providerThreadId!,
+              providerTurnId,
+              reason: "initial",
+              status: "running",
+              startedAt: now,
+              completedAt: null,
+            },
+          },
+          {
+            id: EventId.make("event:turn:laptop-live"),
+            type: "provider-turn.updated",
+            threadId: parentThreadId,
+            driver,
+            providerInstanceId: instanceId,
+            occurredAt: now,
+            payload: {
+              id: providerTurnId,
+              providerThreadId: parentRun.providerThreadId!,
+              nodeId: parentRootNode,
+              runAttemptId: attemptId,
+              nativeTurnRef: null,
+              ordinal: parentRun.ordinal,
+              status: "running",
+              startedAt: now,
+              completedAt: null,
+            },
+          },
+          {
+            id: EventId.make("event:run-live:laptop-parent"),
+            type: "run.updated",
+            threadId: parentThreadId,
+            runId: parentRun.id,
+            nodeId: parentRootNode,
+            providerInstanceId: instanceId,
+            occurredAt: now,
+            payload: { ...parentRun, status: "running", activeAttemptId: attemptId },
+          },
+        ],
+      });
+
+      yield* a.orchestrator.dispatch({
+        type: "thread.stop",
+        commandId: CommandId.make("command:thread-stop:remote-live"),
+        threadId: parentThreadId,
+        reason: "User stopped",
+      });
+      const after = yield* a.orchestrator.getThreadProjection(parentThreadId);
+      const task = after.subagents.find((candidate) => candidate.id === delegated.taskId);
+      const card = after.turnItems.find(
+        (item) => item.type === "subagent" && item.subagentId === delegated.taskId,
+      );
+      // Settlement skips a remote card, and this command does not send
+      // delegated_task.remote.stop. The scoped walk does, once it runs.
+      expect(card?.status).toBe("running");
+      expect(task?.status).toBe("running");
+      expect(task?.remoteChild?.stoppedThere).not.toBe(true);
+      const sql = Context.get(database, SqlClient.SqlClient);
+      const outbox = yield* sql<{
+        readonly effect_type: string;
+        readonly payload_json: string;
+      }>`
+        SELECT effect_type, payload_json
+        FROM orchestration_v2_effect_outbox
+        WHERE thread_id = ${parentThreadId}
+          AND command_id = ${"command:thread-stop:remote-live"}
+      `;
+      const stop = outbox.find((row) => row.effect_type === "delegated-tasks.stop");
+      expect(stop?.payload_json).toContain(parentRun.id);
     }),
   ).pipe(Effect.provide(NodeHttpServer.layerTest)),
 );

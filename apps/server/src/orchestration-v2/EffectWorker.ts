@@ -702,6 +702,7 @@ export const layerExecutor: Layer.Layer<
                 threadId: effect.threadId,
                 commandId: effect.commandId,
                 reason: effect.request.reason,
+                ...(effect.request.runId === undefined ? {} : { runId: effect.request.runId }),
               })
               .pipe(
                 Effect.mapError(

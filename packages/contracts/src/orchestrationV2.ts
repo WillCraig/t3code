@@ -3305,8 +3305,15 @@ export const OrchestrationV2Command = Schema.Union([
     /**
      * False when the caller stops the thread's delegated tasks itself, as the server's tree walks
      * do under their caller's dispatch limit. Otherwise Stop also stops every task under the thread.
+     * A caller that walks also discards earlier delegated tasks, so they cannot wake this thread.
      */
     stopDelegatedTasks: Schema.optional(Schema.Boolean),
+    /**
+     * False for a deliberate stop, such as the subagent card or MCP `interruptThread` with
+     * `stop: true`. Absent on a user's Stop, which keeps earlier delegated tasks only while a
+     * turn is still live.
+     */
+    keepEarlierDelegatedTasks: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({
     type: Schema.Literal("thread.create"),
@@ -3688,6 +3695,16 @@ export const OrchestrationV2Command = Schema.Union([
     runId: RunId,
     reason: Schema.optional(Schema.String),
     holdQueue: Schema.optional(Schema.Boolean),
+    /**
+     * False when this interrupt is the turn half of a deliberate thread stop. Absent for a user's
+     * Stop, which keeps earlier delegated tasks only while the named run is live.
+     */
+    keepEarlierDelegatedTasks: Schema.optional(Schema.Boolean),
+    /**
+     * False when the caller stops delegated tasks itself. The interrupt then discards their
+     * deliveries and does not enqueue another walk.
+     */
+    stopDelegatedTasks: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({
     type: Schema.Literal("queued-message.promote-to-steer"),

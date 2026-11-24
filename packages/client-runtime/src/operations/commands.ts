@@ -955,6 +955,10 @@ export const interruptThreadTurn = Effect.fn("EnvironmentCommands.interruptThrea
         type: "thread.stop",
         commandId: yield* allocateCommandId(input),
         threadId,
+        // The card stops this child on purpose. A Stop typed in the child itself does not.
+        ...(input.subagentId !== undefined && threadId !== input.threadId
+          ? { keepEarlierDelegatedTasks: false as const }
+          : {}),
       });
     }
   }

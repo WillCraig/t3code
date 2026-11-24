@@ -986,7 +986,12 @@ describe("V2 environment commands", () => {
             runId,
             subagentId,
           },
-          { type: "thread.stop", commandId: "lineage-stop", threadId: childThreadId },
+          {
+            type: "thread.stop",
+            commandId: "lineage-stop",
+            threadId: childThreadId,
+            keepEarlierDelegatedTasks: false,
+          },
         ]);
       }).pipe(Effect.provide(layerTestRandom)),
   );
