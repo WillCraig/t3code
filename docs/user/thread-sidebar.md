@@ -293,7 +293,9 @@ beside the thread you are in. See
 On mobile, open a subagent from its conversation card or **Agents**. On iOS
 layouts with an inspector, its thread opens beside the parent. Maximize it to
 fill the screen; close the full-screen view to return to the parent and inspector.
-Stop on a thread also stops the subagents it delegated to.
+Stopping a prompt that is still running leaves subagents that thread delegated
+in the background running, so you can stop, edit, and send again. Stop on a
+thread that is not in a turn also stops those subagents.
 Before archiving the parent, wait for its delegated tasks to finish or cancel them.
 
 Subagent threads started by the agent can't take messages; message the parent

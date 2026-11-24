@@ -2093,6 +2093,25 @@ it.effect("the parent's Stop queues stopping a task that runs only there", () =>
       yield* seedParent(a);
 
       yield* delegateToBox(a);
+      // The parent turn has finished; Stop here is the idle stop that ends background work.
+      const parent = yield* a.orchestrator.getThreadProjection(parentThreadId);
+      const parentRun = parent.runs[0]!;
+      const settledAt = yield* DateTime.now;
+      yield* a.sink.write({
+        commandId: CommandId.make("command:complete:laptop-parent"),
+        events: [
+          {
+            id: EventId.make("event:complete-run:laptop-parent"),
+            type: "run.updated",
+            threadId: parentThreadId,
+            runId: parentRun.id,
+            nodeId: parentRootNode,
+            providerInstanceId: instanceId,
+            occurredAt: settledAt,
+            payload: { ...parentRun, status: "completed", completedAt: settledAt },
+          },
+        ],
+      });
       yield* a.orchestrator.dispatch({
         type: "thread.stop",
         commandId: CommandId.make("command:thread-stop:remote-only"),
